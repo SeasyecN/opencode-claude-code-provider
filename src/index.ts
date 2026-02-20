@@ -11,8 +11,11 @@ type ClaudeCodeModel = (typeof CLAUDE_CODE_MODELS)[number];
 
 function isClaudeLoggedIn(): boolean {
   const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-  const credentialsPath = join(claudeConfigDir, "credentials.json");
-  return existsSync(credentialsPath);
+  const credentialsPaths = [
+    join(claudeConfigDir, "credentials.json"),
+    join(claudeConfigDir, ".credentials.json"),
+  ];
+  return credentialsPaths.some((path) => existsSync(path));
 }
 
 function getSdkWrapperPath(): string {
@@ -99,7 +102,7 @@ function createClaudeCodeProvider(): ClaudeCodeProvider {
  * Allows users to use Claude Code (Agent SDK) models without API keys,
  * leveraging their existing `claude login` subscription.
  */
-const ClaudeCodeProviderPlugin: Plugin = async () => {
+export const ClaudeCodeProviderPlugin: Plugin = async () => {
   const provider = createClaudeCodeProvider();
 
   return {
