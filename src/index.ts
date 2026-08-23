@@ -1,21 +1,40 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { Config, Event } from "@opencode-ai/sdk";
 import { type Plugin, tool } from "@opencode-ai/plugin";
-import type { Event, Config } from "@opencode-ai/sdk";
 import { createClaudeCode, type ClaudeCodeProvider } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
-import { existsSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
 
 const CLAUDE_CODE_MODELS = ["sonnet", "opus", "haiku"] as const;
 type ClaudeCodeModel = (typeof CLAUDE_CODE_MODELS)[number];
 
-function isClaudeLoggedIn(): boolean {
-  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
-  const credentialsPaths = [
-    join(claudeConfigDir, "credentials.json"),
-    join(claudeConfigDir, ".credentials.json"),
+function findClaudeCli(): string {
+  const candidates = [
+    join(homedir(), ".local", "bin", "claude"),
+    "/usr/local/bin/claude",
+    "/opt/homebrew/bin/claude",
   ];
-  return credentialsPaths.some((path) => existsSync(path));
+
+  return candidates.find((path) => existsSync(path)) || "claude";
+}
+
+const CLAUDE_AUTH_STATUS_SCHEMA = z.object({ loggedIn: z.boolean() });
+
+function isClaudeLoggedIn(): boolean {
+  const result = spawnSync(findClaudeCli(), ["auth", "status", "--json"], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  if (result.status !== 0) return false;
+
+  try {
+    return CLAUDE_AUTH_STATUS_SCHEMA.parse(JSON.parse(result.stdout)).loggedIn;
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof z.ZodError) return false;
+    throw error;
+  }
 }
 
 function getSdkWrapperPath(): string {
@@ -40,7 +59,7 @@ const CLAUDE_CODE_PROVIDER_CONFIG = {
         cache: { read: 0, write: 0 },
       },
       limit: {
-        context: 200000,
+        context: 1000000,
         output: 16384,
       },
     },
@@ -92,6 +111,7 @@ function createClaudeCodeProvider(): ClaudeCodeProvider {
         preset: "claude_code",
       },
       permissionMode: "default",
+      settingSources: ["user", "project", "local"],
     },
   });
 }
